@@ -114,6 +114,25 @@ function setStatus(message) {
   statusElement.textContent = message;
 }
 
+// Turn a Supabase Auth error into something actionable instead of a generic message.
+function describeAuthError(error, fallback) {
+  const code = error && (error.error_code || error.code);
+  const msg = (error && (error.message || error.msg)) || "";
+  let hint = "";
+
+  if (code === "otp_disabled" || /not allowed for otp/i.test(msg)) {
+    hint =
+      " Email sign-in codes are not enabled on this project yet (Supabase: Authentication → Sign In / Up → Email → enable One-time password).";
+  } else if (code === "over_email_send_rate_limit" || /rate limit/i.test(msg)) {
+    hint =
+      " Too many requests — wait a while and retry, or configure a custom SMTP server.";
+  } else if (code === "email_not_confirmed" || /not.?t confirmed/i.test(msg)) {
+    hint = " This email has not been confirmed yet.";
+  }
+
+  return (fallback + (msg ? " (" + msg + ")" : "") + hint).trim();
+}
+
 sendOtpButton.addEventListener("click", async () => {
 
   const email = emailInput.value.trim();
@@ -135,7 +154,7 @@ sendOtpButton.addEventListener("click", async () => {
 
   if (error) {
     setStatus(
-      "We could not send a verification code. Please check the email address and try again."
+      describeAuthError(error, "We could not send a verification code.")
     );
 
     sendOtpButton.disabled = false;
@@ -172,7 +191,7 @@ verifyOtpButton.addEventListener("click", async () => {
 
   if (error) {
     setStatus(
-      "The verification code is invalid or expired."
+      describeAuthError(error, "The verification code is invalid or expired.")
     );
 
     verifyOtpButton.disabled = false;
