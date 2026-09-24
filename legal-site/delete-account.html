@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Delete ProPace Account</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+
+<main class="container">
+
+  <header>
+    <a href="index.html" class="brand">ProPace</a>
+    <h1>Delete your ProPace account</h1>
+  </header>
+
+  <section class="card">
+
+    <p>
+      Enter the email address associated with your ProPace account.
+      We will send you a verification code so you can permanently delete
+      your account and associated data without reinstalling the app.
+    </p>
+
+    <label for="email">Email address</label>
+
+    <input
+      id="email"
+      type="email"
+      autocomplete="email"
+      placeholder="you@example.com"
+      required
+    >
+
+    <button id="sendOtp" type="button">
+      Send verification code
+    </button>
+
+    <div id="otpSection" hidden>
+
+      <label for="otp">Verification code</label>
+
+      <input
+        id="otp"
+        inputmode="numeric"
+        autocomplete="one-time-code"
+        placeholder="Enter your code"
+      >
+
+      <button id="verifyOtp" type="button">
+        Verify account
+      </button>
+
+    </div>
+
+    <div id="deleteSection" hidden>
+
+      <p class="warning">
+        Deleting your account is permanent.
+        Your ProPace account, profile and training data will be deleted.
+      </p>
+
+      <button id="deleteAccount" type="button" class="danger">
+        Permanently delete my account
+      </button>
+
+    </div>
+
+    <p id="status" role="status"></p>
+
+  </section>
+
+  <p>
+    <a href="privacy.html">Privacy Policy</a>
+  </p>
+
+</main>
+
+<script type="module">
+
+import { createClient } from
+  "https://esm.sh/@supabase/supabase-js@2";
+
+// Public Supabase configuration. These values are safe to expose in the
+// browser: the publishable/anon key is not a secret. The server-side secret
+// key lives only in the account-deletion Edge Function and is never shipped here.
+const SUPABASE_URL =
+  "https://ofcwrwjlcfvpzfupyrkj.supabase.co";
+
+const SUPABASE_PUBLISHABLE_KEY =
+  "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9mY3dyd2psY2Z2cHpmdXB5cmtqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQyMDk1MDMsImV4cCI6MjA5OTc4NTUwM30.z3B3AVMvPbax1AxRj1YncUCwMOQ5Q5WbBPlD_WE-r04";
+
+const supabase = createClient(
+  SUPABASE_URL,
+  SUPABASE_PUBLISHABLE_KEY
+);
+
+const emailInput = document.getElementById("email");
+const otpInput = document.getElementById("otp");
+
+const sendOtpButton = document.getElementById("sendOtp");
+const verifyOtpButton = document.getElementById("verifyOtp");
+const deleteButton = document.getElementById("deleteAccount");
+
+const otpSection = document.getElementById("otpSection");
+const deleteSection = document.getElementById("deleteSection");
+
+const statusElement = document.getElementById("status");
+
+function setStatus(message) {
+  statusElement.textContent = message;
+}
+
+sendOtpButton.addEventListener("click", async () => {
+
+  const email = emailInput.value.trim();
+
+  if (!email) {
+    setStatus("Enter your ProPace email address.");
+    return;
+  }
+
+  sendOtpButton.disabled = true;
+  setStatus("Sending verification code...");
+
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: {
+      shouldCreateUser: false
+    }
+  });
+
+  if (error) {
+    setStatus(
+      "We could not send a verification code. Please check the email address and try again."
+    );
+
+    sendOtpButton.disabled = false;
+    return;
+  }
+
+  otpSection.hidden = false;
+
+  setStatus(
+    "A verification code has been sent to your email."
+  );
+
+  sendOtpButton.disabled = false;
+});
+
+verifyOtpButton.addEventListener("click", async () => {
+
+  const email = emailInput.value.trim();
+  const token = otpInput.value.trim();
+
+  if (!email || !token) {
+    setStatus("Enter the verification code.");
+    return;
+  }
+
+  verifyOtpButton.disabled = true;
+  setStatus("Verifying...");
+
+  const { error } = await supabase.auth.verifyOtp({
+    email,
+    token,
+    type: "email"
+  });
+
+  if (error) {
+    setStatus(
+      "The verification code is invalid or expired."
+    );
+
+    verifyOtpButton.disabled = false;
+    return;
+  }
+
+  deleteSection.hidden = false;
+
+  setStatus(
+    "Your account has been verified. You can now request permanent deletion."
+  );
+
+  verifyOtpButton.disabled = false;
+});
+
+deleteButton.addEventListener("click", async () => {
+
+  const confirmed = window.confirm(
+    "Are you sure you want to permanently delete your ProPace account?"
+  );
+
+  if (!confirmed) {
+    return;
+  }
+
+  deleteButton.disabled = true;
+  setStatus("Deleting your account...");
+
+  const {
+    data: {
+      session
+    }
+  } = await supabase.auth.getSession();
+
+  if (!session) {
+    setStatus(
+      "Your verification session has expired. Please start again."
+    );
+
+    deleteButton.disabled = false;
+    return;
+  }
+
+  try {
+    const response = await fetch(
+      `${SUPABASE_URL}/functions/v1/account-deletion`,
+      {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${session.access_token}`,
+          "Content-Type": "application/json",
+          "apikey": SUPABASE_PUBLISHABLE_KEY
+        }
+      }
+    );
+
+    const result = await response.json();
+
+    if (!response.ok) {
+      setStatus(
+        result.error ??
+        "Account deletion failed. Please try again."
+      );
+
+      deleteButton.disabled = false;
+      return;
+    }
+
+    await supabase.auth.signOut();
+
+    deleteSection.hidden = true;
+    otpSection.hidden = true;
+
+    setStatus(
+      "Your ProPace account and associated data have been deleted."
+    );
+  } catch (networkError) {
+    setStatus(
+      "Account deletion failed. Please check your connection and try again."
+    );
+
+    deleteButton.disabled = false;
+  }
+});
+
+</script>
+
+</body>
+</html>
